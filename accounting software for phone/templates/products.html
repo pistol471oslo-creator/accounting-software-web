@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}محصولات{% endblock %}
+{% block page_title %}محصولات{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="card-header">
+    <h2>لیست محصولات</h2>
+    {% if permissions.get('add_product') %}
+    <button class="btn btn-success btn-sm" onclick="openModal()">➕ محصول جدید</button>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="search-bar">
+      <input class="form-control" id="searchInput" placeholder="🔍 جستجو بر اساس نام یا بارکد..." oninput="loadProducts()">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>نام</th><th>بارکد</th><th>دسته</th><th>قیمت</th><th>موجودی</th><th>عملیات</th></tr></thead>
+        <tbody id="prodBody"><tr><td colspan="7" style="text-align:center;padding:30px" class="text-muted">در حال بارگذاری...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="prodModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">افزودن محصول</h3>
+      <button onclick="closeModal()" style="background:none;border:none;color:white;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId">
+      <div class="form-row cols-2">
+        <div class="form-group"><label>نام محصول *</label><input class="form-control" id="fName" placeholder="نام محصول"></div>
+        <div class="form-group"><label>بارکد</label><input class="form-control" id="fBarcode" placeholder="بارکد"></div>
+      </div>
+      <div class="form-row cols-2">
+        <div class="form-group"><label>قیمت فروش (تومان) *</label><input class="form-control" id="fPrice" type="number" min="0" placeholder="0"></div>
+        <div class="form-group"><label>قیمت خرید (تومان)</label><input class="form-control" id="fCost" type="number" min="0" placeholder="0"></div>
+      </div>
+      <div class="form-row cols-2">
+        <div class="form-group"><label>موجودی *</label><input class="form-control" id="fStock" type="number" min="0" placeholder="0"></div>
+        <div class="form-group"><label>دسته‌بندی</label><input class="form-control" id="fCat" placeholder="عمومی"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">انصراف</button>
+      <button class="btn btn-success" onclick="saveProduct()">💾 ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stock Modal -->
+<div class="modal-overlay" id="stockModal">
+  <div class="modal" style="max-width:340px">
+    <div class="modal-header">
+      <h3>افزودن موجودی</h3>
+      <button onclick="document.getElementById('stockModal').classList.remove('open')" style="background:none;border:none;color:white;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="stockPid">
+      <div class="form-group"><label>تعداد برای افزودن</label><input class="form-control" id="stockQty" type="number" min="1" value="1"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="document.getElementById('stockModal').classList.remove('open')">انصراف</button>
+      <button class="btn btn-success" onclick="addStock()">➕ افزودن</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let products = [];
+
+async function loadProducts() {
+  const q = document.getElementById('searchInput').value;
+  products = await api('GET', `/api/products?q=${encodeURIComponent(q)}`);
+  renderProducts();
+}
+
+function renderProducts() {
+  const tbody = document.getElementById('prodBody');
+  if (!products.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📦</div><p>محصولی یافت نشد</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = products.map((p,i) => `
+    <tr>
+      <td class="text-muted">${i+1}</td>
+      <td><strong>${p.name}</strong></td>
+      <td class="text-muted">${p.barcode||'—'}</td>
+      <td><span class="badge badge-info">${p.category||'عمومی'}</span></td>
+      <td class="num">${Number(p.price).toLocaleString('fa-IR')}</td>
+      <td>
+        <span class="badge badge-${p.stock===0?'danger':p.stock<=10?'warning':'success'}">${p.stock}</span>
+      </td>
+      <td>
+        <div class="flex gap-2">
+          {% if permissions.get('edit_product') %}
+          <button class="btn btn-ghost btn-sm" onclick="openStockModal(${p.id})" title="افزودن موجودی">📥</button>
+          <button class="btn btn-ghost btn-sm" onclick="editProduct(${p.id})">✏️</button>
+          {% endif %}
+          {% if permissions.get('delete_product') %}
+          <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id},'${p.name.replace(/'/g,"\\'")}')">🗑️</button>
+          {% endif %}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function openModal() {
+  document.getElementById('modalTitle').textContent = 'افزودن محصول';
+  document.getElementById('editId').value = '';
+  ['fName','fBarcode','fPrice','fCost','fStock','fCat'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fCat').value = 'عمومی';
+  document.getElementById('prodModal').classList.add('open');
+}
+function closeModal() { document.getElementById('prodModal').classList.remove('open'); }
+
+function editProduct(id) {
+  const p = products.find(x=>x.id===id);
+  if (!p) return;
+  document.getElementById('modalTitle').textContent = 'ویرایش محصول';
+  document.getElementById('editId').value = id;
+  document.getElementById('fName').value = p.name;
+  document.getElementById('fBarcode').value = p.barcode||'';
+  document.getElementById('fPrice').value = p.price;
+  document.getElementById('fCost').value = p.cost_price;
+  document.getElementById('fStock').value = p.stock;
+  document.getElementById('fCat').value = p.category||'عمومی';
+  document.getElementById('prodModal').classList.add('open');
+}
+
+async function saveProduct() {
+  const id = document.getElementById('editId').value;
+  const body = {
+    name: document.getElementById('fName').value.trim(),
+    barcode: document.getElementById('fBarcode').value.trim(),
+    price: parseFloat(document.getElementById('fPrice').value)||0,
+    cost_price: parseFloat(document.getElementById('fCost').value)||0,
+    stock: parseInt(document.getElementById('fStock').value)||0,
+    category: document.getElementById('fCat').value.trim()||'عمومی'
+  };
+  if (!body.name) { toast('نام محصول الزامی است','error'); return; }
+  const res = id
+    ? await api('PUT', `/api/products/${id}`, body)
+    : await api('POST', '/api/products', body);
+  if (res.success) { toast(res.message,'success'); closeModal(); loadProducts(); }
+  else toast(res.message,'error');
+}
+
+async function deleteProduct(id, name) {
+  if (!confirmDelete(`حذف محصول "${name}"؟`)) return;
+  const res = await api('DELETE', `/api/products/${id}`);
+  if (res.success) { toast(res.message,'success'); loadProducts(); }
+  else toast(res.message,'error');
+}
+
+function openStockModal(pid) {
+  document.getElementById('stockPid').value = pid;
+  document.getElementById('stockQty').value = 1;
+  document.getElementById('stockModal').classList.add('open');
+}
+
+async function addStock() {
+  const pid = document.getElementById('stockPid').value;
+  const qty = parseInt(document.getElementById('stockQty').value);
+  if (!qty || qty < 1) { toast('تعداد نامعتبر','error'); return; }
+  const res = await api('POST', `/api/products/${pid}/stock`, {quantity: qty});
+  if (res.success) { toast(res.message,'success'); document.getElementById('stockModal').classList.remove('open'); loadProducts(); }
+  else toast(res.message,'error');
+}
+
+loadProducts();
+</script>
+{% endblock %}

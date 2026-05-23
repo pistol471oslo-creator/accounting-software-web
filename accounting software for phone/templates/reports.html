@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}گزارشات{% endblock %}
+{% block page_title %}گزارشات{% endblock %}
+{% block content %}
+
+<div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+  <button class="btn btn-primary" id="tabDaily" onclick="showTab('daily')">📅 روزانه</button>
+  <button class="btn btn-ghost" id="tabProfit" onclick="showTab('profit')">💰 سود و زیان</button>
+  <button class="btn btn-ghost" id="tabBest" onclick="showTab('best')">🏆 پرفروش‌ها</button>
+</div>
+
+<!-- Daily Tab -->
+<div id="tabDailyContent">
+  <div class="card mb-3">
+    <div class="card-header"><h2>📅 گزارش روزانه</h2></div>
+    <div class="card-body">
+      <div class="flex gap-2 items-center" style="margin-bottom:16px;flex-wrap:wrap">
+        <div class="form-group" style="margin:0">
+          <label>تاریخ شمسی (مثال: ۱۴۰۴/۰۲/۰۳)</label>
+          <input class="form-control" id="dailyDate" placeholder="۱۴۰۴/۰۲/۰۳" style="max-width:200px" dir="ltr">
+        </div>
+        <button class="btn btn-primary" onclick="loadDaily()" style="align-self:flex-end">نمایش</button>
+      </div>
+      <div id="dailyResult"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Profit Tab -->
+<div id="tabProfitContent" style="display:none">
+  <div class="card mb-3">
+    <div class="card-header"><h2>💰 گزارش سود و زیان</h2></div>
+    <div class="card-body">
+      <div class="form-row cols-2" style="max-width:500px;margin-bottom:16px">
+        <div class="form-group"><label>از تاریخ شمسی</label><input class="form-control" id="profitStart" placeholder="۱۴۰۴/۰۱/۰۱" dir="ltr"></div>
+        <div class="form-group"><label>تا تاریخ شمسی</label><input class="form-control" id="profitEnd" placeholder="۱۴۰۴/۱۲/۲۹" dir="ltr"></div>
+      </div>
+      <button class="btn btn-primary" onclick="loadProfit()">نمایش گزارش</button>
+      <div id="profitResult" class="mt-3"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Best Selling Tab -->
+<div id="tabBestContent" style="display:none">
+  <div class="card mb-3">
+    <div class="card-header"><h2>🏆 پرفروش‌ترین محصولات</h2></div>
+    <div class="card-body">
+      <div class="form-row cols-2" style="max-width:500px;margin-bottom:16px">
+        <div class="form-group"><label>از تاریخ شمسی</label><input class="form-control" id="bestStart" placeholder="۱۴۰۴/۰۱/۰۱" dir="ltr"></div>
+        <div class="form-group"><label>تا تاریخ شمسی</label><input class="form-control" id="bestEnd" placeholder="۱۴۰۴/۱۲/۲۹" dir="ltr"></div>
+      </div>
+      <button class="btn btn-primary" onclick="loadBest()">نمایش</button>
+      <div id="bestResult" class="mt-3"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(tab) {
+  ['daily','profit','best'].forEach(t => {
+    document.getElementById(`tabContent`.replace('Content','') + t.charAt(0).toUpperCase() + t.slice(1) + 'Content').style.display = t===tab?'block':'none';
+    document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).className = 'btn ' + (t===tab?'btn-primary':'btn-ghost');
+  });
+}
+
+// Convert Persian/Arabic numerals to Western
+function toWestern(str) {
+  return str.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+            .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+}
+
+// Convert Shamsi YYYY/MM/DD to Gregorian YYYY-MM-DD via API
+async function shamsiToGregorian(shamsi) {
+  if (!shamsi) return '';
+  shamsi = toWestern(shamsi.trim());
+  const res = await api('GET', `/api/shamsi-to-gregorian?date=${encodeURIComponent(shamsi)}`);
+  return res.gregorian || '';
+}
+
+// Set today's Persian date as default
+async function setDefaults() {
+  const r = await api('GET', '/api/persian-today');
+  if (r.date) {
+    document.getElementById('dailyDate').value = r.date;
+    document.getElementById('profitEnd').value = r.date;
+    document.getElementById('bestEnd').value = r.date;
+  }
+}
+
+async function loadDaily() {
+  const shamsi = document.getElementById('dailyDate').value.trim();
+  if (!shamsi) { toast('تاریخ را وارد کنید','error'); return; }
+  const greg = await shamsiToGregorian(shamsi);
+  if (!greg) { toast('تاریخ نامعتبر است','error'); return; }
+  const d = await api('GET', `/api/reports/daily?date=${greg}`);
+  const el = document.getElementById('dailyResult');
+  if (!d || (!d.invoice_count && !d.total_sales)) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><p>داده‌ای برای این تاریخ یافت نشد</p></div>'; return;
+  }
+  el.innerHTML = `
+    <div class="stats-grid" style="margin-bottom:20px">
+      <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-value num">${Number(d.total_sales||0).toLocaleString('fa-IR')}</div><div class="stat-label">فروش (تومان)</div></div>
+      <div class="stat-card"><div class="stat-icon">🧾</div><div class="stat-value">${d.invoice_count||0}</div><div class="stat-label">تعداد فاکتور</div></div>
+      <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-value num">${Number(d.avg_invoice||0).toLocaleString('fa-IR')}</div><div class="stat-label">میانگین فاکتور</div></div>
+      ${d.top_product?`<div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-value" style="font-size:14px">${d.top_product}</div><div class="stat-label">پرفروش‌ترین</div></div>`:''}
+    </div>
+    ${(d.products&&d.products.length)?`
+    <div class="card"><div class="card-header"><h2>جزئیات محصولات</h2></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>محصول</th><th>تعداد</th><th>فروش (تومان)</th></tr></thead>
+      <tbody>${d.products.map(p=>`<tr><td>${p[1]}</td><td>${p[2]}</td><td class="num">${Number(p[3]||0).toLocaleString('fa-IR')}</td></tr>`).join('')}</tbody>
+    </table></div></div>`:''}`;
+}
+
+async function loadProfit() {
+  const startShamsi = document.getElementById('profitStart').value.trim();
+  const endShamsi = document.getElementById('profitEnd').value.trim();
+  const start = startShamsi ? await shamsiToGregorian(startShamsi) : '';
+  const end = endShamsi ? await shamsiToGregorian(endShamsi) : '';
+  const d = await api('GET', `/api/reports/profit?start=${start}&end=${end}`);
+  const el = document.getElementById('profitResult');
+  el.innerHTML = `
+    <div class="stats-grid" style="margin-bottom:20px">
+      <div class="stat-card"><div class="stat-icon">💵</div><div class="stat-value num">${Number(d.total_revenue||0).toLocaleString('fa-IR')}</div><div class="stat-label">درآمد کل (تومان)</div></div>
+      <div class="stat-card"><div class="stat-icon">💸</div><div class="stat-value num">${Number(d.total_cost||0).toLocaleString('fa-IR')}</div><div class="stat-label">هزینه کل (تومان)</div></div>
+      <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-value num ${d.total_profit>=0?'text-success':'text-danger'}">${Number(d.total_profit||0).toLocaleString('fa-IR')}</div><div class="stat-label">سود خالص (تومان)</div></div>
+      <div class="stat-card"><div class="stat-icon">%</div><div class="stat-value">${Number(d.profit_margin||0).toFixed(1)}%</div><div class="stat-label">حاشیه سود</div></div>
+    </div>
+    ${(d.products&&d.products.length)?`
+    <div class="card"><div class="card-header"><h2>جزئیات محصولات</h2></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>محصول</th><th>تعداد فروش</th><th>درآمد</th><th>سود</th><th>حاشیه</th></tr></thead>
+      <tbody>${d.products.map(p=>`<tr>
+        <td>${p.name}</td><td>${p.quantity_sold}</td>
+        <td class="num">${Number(p.revenue||0).toLocaleString('fa-IR')}</td>
+        <td class="num ${p.profit>=0?'text-success':'text-danger'}">${Number(p.profit||0).toLocaleString('fa-IR')}</td>
+        <td>${Number(p.profit_margin||0).toFixed(1)}%</td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`:''}`;
+}
+
+async function loadBest() {
+  const startShamsi = document.getElementById('bestStart').value.trim();
+  const endShamsi = document.getElementById('bestEnd').value.trim();
+  const start = startShamsi ? await shamsiToGregorian(startShamsi) : '';
+  const end = endShamsi ? await shamsiToGregorian(endShamsi) : '';
+  const rows = await api('GET', `/api/reports/best-selling?start=${start}&end=${end}`);
+  const el = document.getElementById('bestResult');
+  if (!rows.length) { el.innerHTML='<div class="empty-state"><div class="empty-icon">🏆</div><p>داده‌ای یافت نشد</p></div>'; return; }
+  el.innerHTML = `<div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>رتبه</th><th>محصول</th><th>تعداد</th><th>فروش (تومان)</th><th>تعداد فاکتور</th></tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr>
+      <td><span class="badge badge-${i<3?'warning':'info'}">${i+1}</span></td>
+      <td><strong>${r.name}</strong></td>
+      <td>${r.qty}</td>
+      <td class="num">${Number(r.revenue||0).toLocaleString('fa-IR')}</td>
+      <td>${r.invoices}</td>
+    </tr>`).join('')}</tbody>
+  </table></div></div>`;
+}
+
+setDefaults();
+</script>
+{% endblock %}

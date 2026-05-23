@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}هشدار موجودی کم{% endblock %}
+{% block page_title %}هشدار موجودی کم{% endblock %}
+{% block content %}
+
+<div class="card mb-3">
+  <div class="card-header">
+    <h2>🔔 محصولات با موجودی کم یا صفر</h2>
+    <div class="flex gap-2 items-center">
+      <label style="font-size:13px;color:var(--muted)">آستانه هشدار:</label>
+      <input type="number" id="threshold" value="10" min="1" class="form-control" style="width:70px;padding:5px 8px">
+      <button class="btn btn-primary btn-sm" onclick="loadLowStock()">نمایش</button>
+    </div>
+  </div>
+  <div class="card-body" style="padding:0">
+    <div id="lowStockContent" class="table-wrap">
+      <table>
+        <thead><tr><th>نام محصول</th><th>بارکد</th><th>دسته</th><th>قیمت</th><th>موجودی</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+        <tbody id="lowBody"><tr><td colspan="7" style="text-align:center;padding:30px" class="text-muted">در حال بارگذاری...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Restock Modal -->
+<div class="modal-overlay" id="restockModal">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-header">
+      <h3>📥 افزودن موجودی</h3>
+      <button onclick="document.getElementById('restockModal').classList.remove('open')" style="background:none;border:none;color:white;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="restockPid">
+      <p style="margin-bottom:12px;font-weight:500" id="restockName"></p>
+      <div class="form-group">
+        <label>تعداد برای افزودن به موجودی</label>
+        <input class="form-control" id="restockQty" type="number" min="1" value="10">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="document.getElementById('restockModal').classList.remove('open')">انصراف</button>
+      <button class="btn btn-success" onclick="doRestock()">➕ افزودن</button>
+    </div>
+  </div>
+</div>
+
+<script>
+async function loadLowStock() {
+  const t = parseInt(document.getElementById('threshold').value) || 10;
+  const items = await api('GET', `/api/products/low-stock`);
+  const filtered = items.filter(p => p.stock <= t);
+  const tbody = document.getElementById('lowBody');
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">✅</div><p>همه محصولات موجودی کافی دارند</p></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(p => `
+    <tr>
+      <td><strong>${p.name}</strong></td>
+      <td class="text-muted">${p.barcode||'—'}</td>
+      <td><span class="badge badge-info">${p.category||'عمومی'}</span></td>
+      <td class="num">${Number(p.price).toLocaleString('fa-IR')}</td>
+      <td><strong style="color:${p.stock===0?'#c62828':'#e65100'}">${p.stock}</strong></td>
+      <td>
+        ${p.stock === 0
+          ? '<span class="badge badge-danger">ناموجود</span>'
+          : '<span class="badge badge-warning">کم‌موجودی</span>'}
+      </td>
+      <td>
+        {% if permissions.get('edit_product') %}
+        <button class="btn btn-success btn-sm" onclick="openRestock(${p.id}, '${p.name.replace(/'/g,"\\'")}')">📥 تامین موجودی</button>
+        {% endif %}
+      </td>
+    </tr>`).join('');
+}
+
+function openRestock(pid, name) {
+  document.getElementById('restockPid').value = pid;
+  document.getElementById('restockName').textContent = name;
+  document.getElementById('restockQty').value = 10;
+  document.getElementById('restockModal').classList.add('open');
+}
+
+async function doRestock() {
+  const pid = document.getElementById('restockPid').value;
+  const qty = parseInt(document.getElementById('restockQty').value) || 0;
+  if (qty < 1) { toast('تعداد نامعتبر', 'error'); return; }
+  const res = await api('POST', `/api/products/${pid}/stock`, {quantity: qty});
+  if (res.success) {
+    toast(res.message, 'success');
+    document.getElementById('restockModal').classList.remove('open');
+    loadLowStock();
+  } else toast(res.message, 'error');
+}
+
+loadLowStock();
+</script>
+{% endblock %}

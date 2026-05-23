@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}برگشت کالا{% endblock %}
+{% block page_title %}برگشت کالا{% endblock %}
+{% block content %}
+
+<div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+  <button class="btn btn-primary" id="tabProcess" onclick="showTab('process')">🔙 ثبت برگشت</button>
+  <button class="btn btn-ghost" id="tabHistory" onclick="showTab('history')">📋 تاریخچه برگشت‌ها</button>
+</div>
+
+<!-- Process Return -->
+<div id="processTab">
+  <div class="card">
+    <div class="card-header"><h2>🔙 ثبت برگشت کالا</h2></div>
+    <div class="card-body">
+      <div class="form-group">
+        <label>شماره فاکتور</label>
+        <div class="flex gap-2">
+          <input class="form-control" id="invNum" type="number" placeholder="شماره فاکتور را وارد کنید" style="max-width:200px">
+          <button class="btn btn-primary" onclick="loadInvoice()">بارگذاری فاکتور</button>
+        </div>
+      </div>
+      <div id="invoiceItems"></div>
+    </div>
+  </div>
+</div>
+
+<!-- History -->
+<div id="historyTab" style="display:none">
+  <div class="card">
+    <div class="card-header"><h2>📋 تاریخچه برگشت‌ها</h2></div>
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>فاکتور</th><th>محصول</th><th>تعداد</th><th>مبلغ برگشتی</th><th>دلیل</th><th>توسط</th><th>تاریخ</th></tr></thead>
+          <tbody id="historyBody"><tr><td colspan="8" style="text-align:center;padding:30px" class="text-muted">در حال بارگذاری...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(tab) {
+  document.getElementById('processTab').style.display = tab === 'process' ? 'block' : 'none';
+  document.getElementById('historyTab').style.display = tab === 'history' ? 'block' : 'none';
+  document.getElementById('tabProcess').className = 'btn ' + (tab === 'process' ? 'btn-primary' : 'btn-ghost');
+  document.getElementById('tabHistory').className = 'btn ' + (tab === 'history' ? 'btn-primary' : 'btn-ghost');
+  if (tab === 'history') loadHistory();
+}
+
+async function loadInvoice() {
+  const id = document.getElementById('invNum').value.trim();
+  if (!id) { toast('شماره فاکتور را وارد کنید', 'error'); return; }
+  const items = await api('GET', `/api/returns/invoice/${id}`);
+  const el = document.getElementById('invoiceItems');
+  if (items.error) { el.innerHTML = `<div class="text-muted mt-2">${items.error}</div>`; return; }
+
+  el.innerHTML = `<div style="margin-top:16px;font-weight:600;margin-bottom:12px;color:var(--primary)">محصولات فاکتور #${id}</div>` +
+    items.map(item => `
+      <div style="border:1.5px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <strong>${item.name}</strong>
+          <span class="badge badge-info">تعداد فروخته: ${item.quantity}</span>
+          <span class="text-muted">${Number(item.unit_price).toLocaleString('fa-IR')} تومان/عدد</span>
+        </div>
+        <div class="form-row cols-3">
+          <div class="form-group">
+            <label>تعداد برگشتی</label>
+            <input class="form-control" id="qty_${item.product_id}" type="number" min="1" max="${item.quantity}" value="1">
+          </div>
+          <div class="form-group">
+            <label>مبلغ برگشتی (تومان)</label>
+            <input class="form-control" id="refund_${item.product_id}" type="number" min="0" value="${item.unit_price}">
+          </div>
+          <div class="form-group">
+            <label>دلیل</label>
+            <select class="form-control" id="reason_${item.product_id}">
+              <option>معیوب</option>
+              <option>اشتباهی</option>
+              <option>تغییر نظر</option>
+              <option>کیفیت پایین</option>
+              <option>سایر</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-success btn-sm" onclick="processReturn(${id}, ${item.product_id})">✅ ثبت برگشت این محصول</button>
+      </div>`).join('');
+}
+
+async function processReturn(invId, prodId) {
+  const qty = parseInt(document.getElementById(`qty_${prodId}`).value) || 0;
+  const refund = parseFloat(document.getElementById(`refund_${prodId}`).value) || 0;
+  const reason = document.getElementById(`reason_${prodId}`).value;
+  if (qty < 1) { toast('تعداد نامعتبر', 'error'); return; }
+  const res = await api('POST', '/api/returns', {
+    invoice_id: invId, product_id: prodId,
+    quantity: qty, refund_amount: refund, reason
+  });
+  if (res.success) { toast(res.message, 'success'); loadInvoice(); }
+  else toast(res.message, 'error');
+}
+
+async function loadHistory() {
+  const rows = await api('GET', '/api/returns/history');
+  const tbody = document.getElementById('historyBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🔙</div><p>هیچ برگشتی ثبت نشده</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="text-muted">#${r.id}</td>
+      <td><span class="badge badge-info">#${r.invoice_id}</span></td>
+      <td><strong>${r.product}</strong></td>
+      <td>${r.quantity}</td>
+      <td class="num text-danger">${Number(r.refund).toLocaleString('fa-IR')}</td>
+      <td>${r.reason}</td>
+      <td class="text-muted">${r.processed_by||'—'}</td>
+      <td class="text-muted">${r.date}</td>
+    </tr>`).join('');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ورود به سیستم</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #4b6cb7, #182848); min-height: 100vh; display: flex; align-items: center; justify-content: center; direction: rtl; padding: 20px; }
+.card { background: white; border-radius: 20px; width: 100%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,.3); overflow: hidden; }
+.card-header { background: linear-gradient(135deg, #4b6cb7, #182848); color: white; padding: 30px 24px; text-align: center; }
+.card-header h1 { font-size: 22px; margin-bottom: 6px; }
+.card-header p { font-size: 13px; opacity: .8; }
+.card-body { padding: 28px 24px; }
+.tab-btns { display: flex; gap: 0; margin-bottom: 24px; border: 1.5px solid #4b6cb7; border-radius: 8px; overflow: hidden; }
+.tab-btn { flex: 1; padding: 10px; background: white; color: #4b6cb7; border: none; font-size: 14px; font-family: inherit; cursor: pointer; font-weight: 500; transition: all .2s; }
+.tab-btn.active { background: #4b6cb7; color: white; }
+.form-group { margin-bottom: 16px; }
+label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #555; }
+input { width: 100%; padding: 11px 14px; border: 1.5px solid #e0e0e0; border-radius: 8px; font-size: 14px; font-family: inherit; direction: rtl; transition: border-color .2s; }
+input:focus { outline: none; border-color: #4b6cb7; }
+.btn { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #4b6cb7; color: white; font-size: 15px; font-family: inherit; cursor: pointer; font-weight: 600; transition: all .2s; }
+.btn:hover { background: #182848; }
+.msg { margin-top: 14px; padding: 10px 14px; border-radius: 8px; font-size: 13px; display: none; }
+.msg.error { background: #ffebee; color: #c62828; display: block; }
+.msg.success { background: #e8f5e9; color: #2e7d32; display: block; }
+.panel { display: none; }
+.panel.active { display: block; }
+.hint { text-align: center; font-size: 12px; color: #999; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    <div style="font-size:40px;margin-bottom:10px">🏪</div>
+    <h1>نرم‌افزار حسابداری</h1>
+    <p>نسخه وب - برای موبایل و کامپیوتر</p>
+  </div>
+  <div class="card-body">
+    <div class="tab-btns">
+      <button class="tab-btn active" onclick="switchTab('login')">ورود</button>
+      <button class="tab-btn" onclick="switchTab('register')">ثبت نام</button>
+    </div>
+
+    <div id="loginPanel" class="panel active">
+      <div class="form-group">
+        <label>نام کاربری</label>
+        <input type="text" id="loginUser" placeholder="نام کاربری خود را وارد کنید" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>رمز عبور</label>
+        <input type="password" id="loginPass" placeholder="رمز عبور" autocomplete="current-password">
+      </div>
+      <button class="btn" onclick="doLogin()" id="loginBtn">ورود</button>
+      <div id="loginMsg" class="msg"></div>
+    </div>
+
+    <div id="registerPanel" class="panel">
+      <div class="form-group">
+        <label>نام کاربری</label>
+        <input type="text" id="regUser" placeholder="حداقل ۳ کاراکتر">
+      </div>
+      <div class="form-group">
+        <label>رمز عبور</label>
+        <input type="password" id="regPass" placeholder="حداقل ۸ کاراکتر">
+      </div>
+      <div class="form-group">
+        <label>تکرار رمز عبور</label>
+        <input type="password" id="regConfirm" placeholder="تکرار رمز عبور">
+      </div>
+      <button class="btn" style="background:#4caf50" onclick="doRegister()" id="regBtn">ثبت نام</button>
+      <div id="regMsg" class="msg"></div>
+      <div class="hint">اولین کاربر به طور خودکار Admin می‌شود</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (tab==='login'&&i===0)||(tab==='register'&&i===1)));
+  document.getElementById('loginPanel').classList.toggle('active', tab==='login');
+  document.getElementById('registerPanel').classList.toggle('active', tab==='register');
+}
+
+async function doLogin() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value.trim();
+  const msg = document.getElementById('loginMsg');
+  msg.className = 'msg';
+  if (!username || !password) { msg.className='msg error'; msg.textContent='همه فیلدها را پر کنید'; return; }
+  const btn = document.getElementById('loginBtn');
+  btn.textContent = 'در حال ورود...'; btn.disabled = true;
+  try {
+    const r = await fetch('/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
+    const data = await r.json();
+    if (data.success) { window.location.href = '/dashboard'; }
+    else { msg.className='msg error'; msg.textContent=data.message; }
+  } catch(e) { msg.className='msg error'; msg.textContent='خطا در ارتباط'; }
+  btn.textContent='ورود'; btn.disabled=false;
+}
+
+async function doRegister() {
+  const username = document.getElementById('regUser').value.trim();
+  const password = document.getElementById('regPass').value;
+  const confirm = document.getElementById('regConfirm').value;
+  const msg = document.getElementById('regMsg');
+  msg.className='msg';
+  if (!username || !password) { msg.className='msg error'; msg.textContent='همه فیلدها را پر کنید'; return; }
+  if (password !== confirm) { msg.className='msg error'; msg.textContent='رمزهای عبور مطابقت ندارند'; return; }
+  const btn = document.getElementById('regBtn');
+  btn.textContent='در حال ثبت...'; btn.disabled=true;
+  try {
+    const r = await fetch('/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
+    const data = await r.json();
+    if (data.success) { msg.className='msg success'; msg.textContent=data.message; setTimeout(()=>switchTab('login'),1500); }
+    else { msg.className='msg error'; msg.textContent=data.message; }
+  } catch(e) { msg.className='msg error'; msg.textContent='خطا در ارتباط'; }
+  btn.textContent='ثبت نام'; btn.disabled=false;
+}
+
+document.addEventListener('keydown', e => { if(e.key==='Enter') { if(document.getElementById('loginPanel').classList.contains('active')) doLogin(); else doRegister(); } });
+</script>
+</body>
+</html>

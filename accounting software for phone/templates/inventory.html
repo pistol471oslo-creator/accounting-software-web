@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}مدیریت موجودی{% endblock %}
+{% block page_title %}مدیریت موجودی{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="card-header"><h2>🏭 مدیریت موجودی انبار</h2></div>
+  <div class="card-body">
+    <div class="search-bar">
+      <input class="form-control" id="searchInput" placeholder="🔍 جستجوی محصول..." oninput="loadProducts()">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>نام محصول</th><th>بارکد</th><th>دسته</th><th>موجودی فعلی</th><th>افزودن موجودی</th><th>تنظیم دستی</th></tr></thead>
+        <tbody id="prodBody"><tr><td colspan="6" style="text-align:center;padding:30px" class="text-muted">در حال بارگذاری...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let products = [];
+
+async function loadProducts() {
+  const q = document.getElementById('searchInput').value;
+  products = await api('GET', `/api/products?q=${encodeURIComponent(q)}`);
+  render();
+}
+
+function render() {
+  const tbody = document.getElementById('prodBody');
+  if (!products.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📦</div><p>محصولی یافت نشد</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = products.map(p => `
+    <tr>
+      <td><strong>${p.name}</strong></td>
+      <td class="text-muted">${p.barcode||'—'}</td>
+      <td><span class="badge badge-info">${p.category||'عمومی'}</span></td>
+      <td>
+        <span class="badge badge-${p.stock===0?'danger':p.stock<=10?'warning':'success'}" style="font-size:13px;padding:5px 12px">${p.stock} عدد</span>
+      </td>
+      <td>
+        <div class="flex gap-2 items-center">
+          <input type="number" min="1" value="1" id="add_${p.id}" class="form-control" style="width:80px;padding:6px 8px">
+          <button class="btn btn-success btn-sm" onclick="addStock(${p.id}, 'add')">➕ افزودن</button>
+        </div>
+      </td>
+      <td>
+        <div class="flex gap-2 items-center">
+          <input type="number" min="0" value="${p.stock}" id="set_${p.id}" class="form-control" style="width:80px;padding:6px 8px">
+          <button class="btn btn-warning btn-sm" onclick="setStock(${p.id})">✏️ تنظیم</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+async function addStock(pid, mode) {
+  const qty = parseInt(document.getElementById(`add_${pid}`).value) || 0;
+  if (qty < 1) { toast('تعداد نامعتبر', 'error'); return; }
+  const res = await api('POST', `/api/products/${pid}/stock`, {quantity: qty});
+  if (res.success) { toast(res.message, 'success'); loadProducts(); }
+  else toast(res.message, 'error');
+}
+
+async function setStock(pid) {
+  const newStock = parseInt(document.getElementById(`set_${pid}`).value);
+  const prod = products.find(p => p.id === pid);
+  if (!prod) return;
+  const diff = newStock - prod.stock;
+  if (diff === 0) { toast('تغییری ایجاد نشد', 'info'); return; }
+  const res = await api('POST', `/api/products/${pid}/stock`, {quantity: diff});
+  if (res.success) { toast(res.message, 'success'); loadProducts(); }
+  else toast(res.message, 'error');
+}
+
+loadProducts();
+</script>
+{% endblock %}

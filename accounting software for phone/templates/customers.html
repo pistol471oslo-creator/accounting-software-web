@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}مشتریان{% endblock %}
+{% block page_title %}مشتریان{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="card-header">
+    <h2>لیست مشتریان</h2>
+    {% if permissions.get('add_customer') %}
+    <button class="btn btn-success btn-sm" onclick="openModal()">➕ مشتری جدید</button>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="search-bar">
+      <input class="form-control" id="searchInput" placeholder="🔍 جستجو بر اساس نام یا تلفن..." oninput="loadCustomers()">
+    </div>
+    <div class="table-wrap">
+      <table id="custTable">
+        <thead><tr><th>#</th><th>نام</th><th>تلفن</th><th>آدرس</th><th>عملیات</th></tr></thead>
+        <tbody id="custBody"><tr><td colspan="5" style="text-align:center;padding:30px" class="text-muted">در حال بارگذاری...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="custModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">افزودن مشتری</h3>
+      <button onclick="closeModal()" style="background:none;border:none;color:white;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId">
+      <div class="form-group"><label>نام مشتری *</label><input class="form-control" id="fName" placeholder="نام کامل"></div>
+      <div class="form-group"><label>تلفن</label><input class="form-control" id="fPhone" placeholder="شماره تلفن" type="tel"></div>
+      <div class="form-group"><label>آدرس</label><textarea class="form-control" id="fAddress" rows="2" placeholder="آدرس"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">انصراف</button>
+      <button class="btn btn-success" onclick="saveCustomer()">💾 ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- Invoices Modal -->
+<div class="modal-overlay" id="invModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>فاکتورهای مشتری</h3>
+      <button onclick="document.getElementById('invModal').classList.remove('open')" style="background:none;border:none;color:white;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div class="modal-body" id="invModalBody">در حال بارگذاری...</div>
+  </div>
+</div>
+
+<script>
+let customers = [];
+
+async function loadCustomers() {
+  const q = document.getElementById('searchInput').value;
+  customers = await api('GET', `/api/customers?q=${encodeURIComponent(q)}`);
+  renderCustomers();
+}
+
+function renderCustomers() {
+  const tbody = document.getElementById('custBody');
+  if (!customers.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">👥</div><p>مشتری یافت نشد</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = customers.map((c,i) => `
+    <tr>
+      <td class="text-muted">${i+1}</td>
+      <td><strong>${c.name}</strong></td>
+      <td>${c.phone||'—'}</td>
+      <td class="text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.address||'—'}</td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost btn-sm" onclick="showInvoices(${c.id},'${c.name}')">🧾</button>
+          {% if permissions.get('edit_customer') %}
+          <button class="btn btn-ghost btn-sm" onclick="editCustomer(${c.id})">✏️</button>
+          {% endif %}
+          {% if permissions.get('delete_customer') %}
+          <button class="btn btn-danger btn-sm" onclick="deleteCustomer(${c.id},'${c.name}')">🗑️</button>
+          {% endif %}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function openModal(title='افزودن مشتری') {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('editId').value = '';
+  document.getElementById('fName').value = '';
+  document.getElementById('fPhone').value = '';
+  document.getElementById('fAddress').value = '';
+  document.getElementById('custModal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('custModal').classList.remove('open'); }
+
+function editCustomer(id) {
+  const c = customers.find(x=>x.id===id);
+  if (!c) return;
+  document.getElementById('modalTitle').textContent = 'ویرایش مشتری';
+  document.getElementById('editId').value = id;
+  document.getElementById('fName').value = c.name;
+  document.getElementById('fPhone').value = c.phone||'';
+  document.getElementById('fAddress').value = c.address||'';
+  document.getElementById('custModal').classList.add('open');
+}
+
+async function saveCustomer() {
+  const id = document.getElementById('editId').value;
+  const body = {
+    name: document.getElementById('fName').value.trim(),
+    phone: document.getElementById('fPhone').value.trim(),
+    address: document.getElementById('fAddress').value.trim()
+  };
+  if (!body.name) { toast('نام مشتری الزامی است','error'); return; }
+  const res = id
+    ? await api('PUT', `/api/customers/${id}`, body)
+    : await api('POST', '/api/customers', body);
+  if (res.success) { toast(res.message,'success'); closeModal(); loadCustomers(); }
+  else toast(res.message,'error');
+}
+
+async function deleteCustomer(id, name) {
+  if (!confirmDelete(`حذف مشتری "${name}"؟`)) return;
+  const res = await api('DELETE', `/api/customers/${id}`);
+  if (res.success) { toast(res.message,'success'); loadCustomers(); }
+  else toast(res.message,'error');
+}
+
+async function showInvoices(id, name) {
+  const modal = document.getElementById('invModal');
+  const body = document.getElementById('invModalBody');
+  modal.classList.add('open');
+  body.innerHTML = '<div class="text-muted">در حال بارگذاری...</div>';
+  const invs = await api('GET', `/api/customers/${id}/invoices`);
+  if (!invs.length) { body.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><p>فاکتوری ثبت نشده</p></div>'; return; }
+  body.innerHTML = `<h4 style="margin-bottom:14px">فاکتورهای ${name}</h4>` +
+    invs.map(inv=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid #eee;border-radius:8px;margin-bottom:8px">
+        <span class="badge badge-info">#${inv.id}</span>
+        <span>${inv.date}</span>
+        <span class="text-success num">${Number(inv.total).toLocaleString('fa-IR')} تومان</span>
+        <a href="/invoice/${inv.id}/view" target="_blank" class="btn btn-ghost btn-sm">👁️</a>
+      </div>`).join('');
+}
+
+loadCustomers();
+</script>
+{% endblock %}

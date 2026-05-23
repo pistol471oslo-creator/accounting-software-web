@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}داشبورد{% endblock %}
+{% block page_title %}داشبورد{% endblock %}
+{% block content %}
+
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-value num" id="s-today">—</div><div class="stat-label">فروش امروز (تومان)</div></div>
+  <div class="stat-card"><div class="stat-icon">🧾</div><div class="stat-value num" id="s-inv">—</div><div class="stat-label">فاکتور امروز</div></div>
+  <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value num" id="s-cust">—</div><div class="stat-label">مشتریان</div></div>
+  <div class="stat-card"><div class="stat-icon">📦</div><div class="stat-value num" id="s-prod">—</div><div class="stat-label">محصولات</div></div>
+  <div class="stat-card"><div class="stat-icon">🧾</div><div class="stat-value num" id="s-allinv">—</div><div class="stat-label">کل فاکتورها</div></div>
+  <div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-value num" id="s-low" style="color:#e65100">—</div><div class="stat-label">کم‌موجودی</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" id="quickGrid">
+  <div class="card">
+    <div class="card-header"><h2>دسترسی سریع</h2></div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+      {% if permissions.get('create_invoice') %}<a href="/invoices" class="btn btn-primary">🧾 ایجاد فاکتور جدید</a>{% endif %}
+      {% if permissions.get('add_customer') %}<a href="/customers" class="btn btn-success">👤 افزودن مشتری</a>{% endif %}
+      {% if permissions.get('add_product') %}<a href="/products" class="btn btn-warning">📦 افزودن محصول</a>{% endif %}
+      {% if permissions.get('view_reports') %}<a href="/reports" class="btn btn-ghost">📈 مشاهده گزارشات</a>{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2>⚠️ محصولات کم‌موجودی</h2></div>
+    <div class="card-body" id="lowStockList"><div class="text-muted">در حال بارگذاری...</div></div>
+  </div>
+</div>
+
+<style>
+{% raw %}@media(max-width:768px){#quickGrid{grid-template-columns:1fr}}{% endraw %}
+</style>
+<script>
+async function loadStats() {
+  const d = await api('GET', '/api/dashboard-stats');
+  document.getElementById('s-today').textContent = Number(d.today_sales||0).toLocaleString('fa-IR');
+  document.getElementById('s-inv').textContent = d.today_invoices||0;
+  document.getElementById('s-cust').textContent = d.customers||0;
+  document.getElementById('s-prod').textContent = d.products||0;
+  document.getElementById('s-allinv').textContent = d.invoices||0;
+  document.getElementById('s-low').textContent = d.low_stock_count||0;
+}
+
+async function loadLowStock() {
+  const list = await api('GET', '/api/products/low-stock');
+  const el = document.getElementById('lowStockList');
+  if (!list.length) { el.innerHTML = '<div class="text-muted">همه محصولات موجودی کافی دارند ✅</div>'; return; }
+  el.innerHTML = list.slice(0,5).map(p=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0">
+      <span>${p.name}</span>
+      <span class="badge badge-${p.stock===0?'danger':'warning'}">${p.stock} عدد</span>
+    </div>`).join('');
+}
+
+loadStats(); loadLowStock();
+</script>
+{% endblock %}

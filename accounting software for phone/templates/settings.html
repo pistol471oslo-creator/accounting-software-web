@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}تنظیمات{% endblock %}
+{% block page_title %}تنظیمات{% endblock %}
+{% block content %}
+
+<div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+  <button class="btn btn-primary" id="t1" onclick="showTab('invoice')">📄 فاکتور</button>
+  {% if permissions.get('manage_users') %}<button class="btn btn-ghost" id="t2" onclick="showTab('users')">👥 کاربران</button>{% endif %}
+  {% if permissions.get('export_data') %}<button class="btn btn-ghost" id="t3" onclick="showTab('export')">📤 صادرات</button>{% endif %}
+  {% if permissions.get('backup_restore') %}<button class="btn btn-ghost" id="t4" onclick="showTab('backup')">💾 پشتیبان</button>{% endif %}
+  {% if permissions.get('manage_users') %}<button class="btn btn-ghost" id="t5" onclick="showTab('audit')">📋 لاگ سیستم</button>{% endif %}
+</div>
+
+<!-- Invoice Settings -->
+{% if permissions.get('invoice_settings') %}
+<div id="tab-invoice">
+  <div class="card">
+    <div class="card-header"><h2>📄 تنظیمات فاکتور</h2></div>
+    <div class="card-body">
+      <div class="form-group"><label>متن سربرگ (هر خط یک ردیف)</label><textarea class="form-control" id="headerText" rows="4" placeholder="نام شرکت&#10;آدرس&#10;تلفن"></textarea></div>
+      <div class="form-group"><label>متن پاورقی</label><textarea class="form-control" id="footerText" rows="3" placeholder="با تشکر از خرید شما"></textarea></div>
+      <div class="form-row cols-2">
+        <div class="form-group"><label>مالیات پیش‌فرض (%)</label><input class="form-control" id="taxRate" type="number" min="0" max="100" step="0.1"></div>
+        <div class="form-group"><label>تخفیف پیش‌فرض (%)</label><input class="form-control" id="discRate" type="number" min="0" max="100" step="0.1"></div>
+      </div>
+      <button class="btn btn-success w-full" onclick="saveInvSettings()">💾 ذخیره تنظیمات</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- User Management -->
+{% if permissions.get('manage_users') %}
+<div id="tab-users" style="display:none">
+  <div class="card">
+    <div class="card-header">
+      <h2>👥 مدیریت کاربران</h2>
+      <button class="btn btn-success btn-sm" onclick="document.getElementById('addUserModal').classList.add('open')">➕ کاربر جدید</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div id="userList"><div class="text-muted" style="padding:20px">در حال بارگذاری...</div></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Export -->
+{% if permissions.get('export_data') %}
+<div id="tab-export" style="display:none">
+  <div class="card">
+    <div class="card-header"><h2>📤 صادرات داده</h2></div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:10px;max-width:400px">
+      <a href="/api/export/customers" class="btn btn-ghost">👥 صادرات مشتریان (CSV)</a>
+      <a href="/api/export/products" class="btn btn-ghost">📦 صادرات محصولات (CSV)</a>
+      <a href="/api/export/invoices" class="btn btn-ghost">🧾 صادرات فاکتورها (CSV)</a>
+      <a href="/api/export/invoice_items" class="btn btn-ghost">📋 صادرات اقلام فاکتور (CSV)</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Backup & Restore -->
+{% if permissions.get('backup_restore') %}
+<div id="tab-backup" style="display:none">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="backupGrid">
+    <div class="card">
+      <div class="card-header"><h2>💾 ایجاد پشتیبان</h2></div>
+      <div class="card-body">
+        <p class="text-muted" style="margin-bottom:16px">یک نسخه پشتیبان از کل پایگاه داده ایجاد کنید.</p>
+        <button class="btn btn-primary w-full" onclick="doBackup()">💾 ایجاد پشتیبان</button>
+        <div id="backupResult" class="mt-2"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>📥 بازیابی پشتیبان</h2></div>
+      <div class="card-body">
+        <p class="text-muted" style="margin-bottom:16px">⚠️ داده‌های فعلی با فایل پشتیبان جایگزین می‌شود.</p>
+        <div class="form-group"><label>فایل پشتیبان (.db)</label><input type="file" class="form-control" id="restoreFile" accept=".db"></div>
+        <button class="btn btn-danger w-full" onclick="doRestore()">📥 بازیابی</button>
+        <div id="restoreResult" class="mt-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Audit Log -->
+{% if permissions.get('manage_users') %}
+<div id="tab-audit" style="display:none">
+  <div class="card">
+    <div class="card-header"><h2>📋 لاگ سیستم</h2></div>
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>زمان</th><th>کاربر</th><th>عملیات</th><th>جدول</th><th>جزئیات</th></tr></thead>
+          <tbody id="auditBody"><tr><td colspan="5" style="text-align:center;padding:30px" class="text-muted">در حال بارگذاری...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Add User Modal -->
+{% if permissions.get('manage_users') %}
+<div class="modal-overlay" id="addUserModal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <h3>افزودن کاربر جدید</h3>
+      <button onclick="document.getElementById('addUserModal').classList.remove('open')" style="background:none;border:none;color:white;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>نام کاربری</label><input class="form-control" id="newUsername" placeholder="نام کاربری"></div>
+      <div class="form-group"><label>رمز عبور</label><input type="password" class="form-control" id="newPassword"></div>
+      <div class="form-group">
+        <label>نقش</label>
+        <select class="form-control" id="newRole">
+          <option value="Cashier">Cashier — فروشنده</option>
+          <option value="Manager">Manager — مدیر</option>
+          <option value="Admin">Admin — ادمین</option>
+          <option value="Viewer">Viewer — بیننده</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="document.getElementById('addUserModal').classList.remove('open')">انصراف</button>
+      <button class="btn btn-success" onclick="createUser()">➕ ایجاد</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<style>
+{% raw %}@media(max-width:768px){#backupGrid{grid-template-columns:1fr}}{% endraw %}
+.user-row { display:flex; align-items:center; padding:11px 16px; border-bottom:1px solid var(--border); gap:10px; }
+.user-row:last-child { border-bottom:none; }
+</style>
+
+<script>
+const tabs = ['invoice','users','export','backup','audit'];
+function showTab(tab) {
+  tabs.forEach(t => {
+    const el = document.getElementById('tab-'+t);
+    const btn = document.getElementById('t'+({invoice:1,users:2,export:3,backup:4,audit:5}[t]));
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+    if (btn) btn.className = 'btn ' + (t === tab ? 'btn-primary' : 'btn-ghost');
+  });
+  if (tab === 'users') loadUsers();
+  if (tab === 'audit') loadAudit();
+}
+
+async function loadInvSettings() {
+  const d = await api('GET', '/api/settings/invoice');
+  document.getElementById('headerText').value = d.header_text || '';
+  document.getElementById('footerText').value = d.footer_text || '';
+  document.getElementById('taxRate').value = ((d.default_tax || 0) * 100).toFixed(1);
+  document.getElementById('discRate').value = ((d.default_discount || 0) * 100).toFixed(1);
+}
+
+async function saveInvSettings() {
+  const res = await api('POST', '/api/settings/invoice', {
+    header_text: document.getElementById('headerText').value,
+    footer_text: document.getElementById('footerText').value,
+    default_tax: parseFloat(document.getElementById('taxRate').value) / 100 || 0,
+    default_discount: parseFloat(document.getElementById('discRate').value) / 100 || 0,
+    logo_path: ''
+  });
+  toast(res.message, res.success ? 'success' : 'error');
+}
+
+async function loadUsers() {
+  const el = document.getElementById('userList');
+  if (!el) return;
+  const users = await api('GET', '/api/users');
+  if (!users || users.error) { el.innerHTML = '<div class="text-muted" style="padding:16px">خطا در بارگذاری</div>'; return; }
+  el.innerHTML = users.map(u => `
+    <div class="user-row">
+      <div style="flex:1">
+        <strong>${u.username}</strong>
+        <div class="text-muted">${u.created_at || ''}</div>
+      </div>
+      <select class="form-control" style="width:140px;padding:6px 10px;font-size:13px" onchange="changeRole('${u.username}', this.value)">
+        ${['Admin','Manager','Cashier','Viewer'].map(r => `<option ${r===u.role?'selected':''}>${r}</option>`).join('')}
+      </select>
+      <button class="btn btn-danger btn-icon" onclick="deleteUser('${u.username}')">🗑️</button>
+    </div>`).join('');
+}
+
+async function changeRole(username, role) {
+  const res = await api('PUT', `/api/users/${username}/role`, {role});
+  toast(res.message, res.success ? 'success' : 'error');
+}
+
+async function deleteUser(username) {
+  if (!confirmDelete(`حذف کاربر "${username}"؟`)) return;
+  const res = await api('DELETE', `/api/users/${username}`);
+  if (res.success) { toast(res.message, 'success'); loadUsers(); }
+  else toast(res.message, 'error');
+}
+
+async function createUser() {
+  const body = {
+    username: document.getElementById('newUsername').value.trim(),
+    password: document.getElementById('newPassword').value,
+    role: document.getElementById('newRole').value
+  };
+  if (!body.username || !body.password) { toast('همه فیلدها الزامی‌اند', 'error'); return; }
+  const res = await api('POST', '/api/users', body);
+  if (res.success) {
+    toast(res.message, 'success');
+    document.getElementById('addUserModal').classList.remove('open');
+    document.getElementById('newUsername').value = '';
+    document.getElementById('newPassword').value = '';
+    loadUsers();
+  } else toast(res.message, 'error');
+}
+
+async function doBackup() {
+  const res = await api('POST', '/api/backup');
+  const el = document.getElementById('backupResult');
+  el.innerHTML = `<div class="badge badge-${res.success?'success':'danger'}" style="font-size:13px;padding:8px 14px">${res.message}</div>`;
+  if (res.path) el.innerHTML += `<div class="text-muted mt-2">مسیر: ${res.path}</div>`;
+}
+
+async function doRestore() {
+  const file = document.getElementById('restoreFile').files[0];
+  if (!file) { toast('فایل انتخاب کنید', 'error'); return; }
+  if (!confirm('⚠️ تمام داده‌های فعلی با فایل پشتیبان جایگزین می‌شود. ادامه می‌دهید؟')) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  const r = await fetch('/api/restore', {method:'POST', body: formData});
+  const res = await r.json();
+  const el = document.getElementById('restoreResult');
+  el.innerHTML = `<div class="badge badge-${res.success?'success':'danger'}" style="font-size:13px;padding:8px 14px">${res.message}</div>`;
+  if (res.success) toast('بازیابی موفق — صفحه رفرش می‌شود', 'success');
+}
+
+async function loadAudit() {
+  const rows = await api('GET', '/api/audit-log');
+  const tbody = document.getElementById('auditBody');
+  if (!rows || !rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📋</div><p>لاگی ثبت نشده</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="text-muted" style="font-size:11px;white-space:nowrap">${(r.timestamp||'').slice(0,16)}</td>
+      <td><strong>${r.username||'—'}</strong></td>
+      <td><span class="badge badge-info">${r.action||''}</span></td>
+      <td class="text-muted">${r.table||'—'}</td>
+      <td class="text-muted" style="font-size:12px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.details||''}</td>
+    </tr>`).join('');
+}
+
+loadInvSettings();
+</script>
+{% endblock %}
